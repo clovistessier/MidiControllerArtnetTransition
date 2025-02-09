@@ -36,7 +36,7 @@ int mode = 0;
 final int NUM_COLORS = 8;
 color[] colors = new color[NUM_COLORS];
 
-float transitionTime = 1.0f; // seconds
+float transitionTime = 0.75f; // seconds
 final int FRAME_RATE = 60;
 
 final int NUM_TRANSITIONERS = 4;
@@ -45,6 +45,15 @@ ColorTransitioner[] cts = new ColorTransitioner[NUM_TRANSITIONERS];
 
 final int NUM_LIGHTS = 4;
 SimpleDmxFixture[] lights = new SimpleDmxFixture[NUM_LIGHTS];
+
+final int NUM_PAIRS = NUM_COLORS / 2;
+int[][] pairs = {{0, 1}, {2, 3}, {4, 5}, {6, 7}};
+
+int[] pairIdxs = new int[NUM_TRANSITIONERS];
+int[] trigCounts = new int[NUM_TRANSITIONERS];
+
+final int trigPerPair = 8;
+
 
 void setup() {
   size(800, 400);
@@ -56,9 +65,19 @@ void setup() {
   }
   colorMode(RGB, 255, 255, 255);
 
-  for (int i = 0; i < NUM_TRANSITIONERS; i++) {
-    colorIdxs[i] = i;
-    cts[i] = new ColorTransitioner(this, transitionTime, (int) colors[i], FRAME_RATE);
+  // for (int i = 0; i < NUM_TRANSITIONERS; i++) {
+  //   colorIdxs[i] = i;
+  //   cts[i] = new ColorTransitioner(this, transitionTime, (int) colors[i], FRAME_RATE);
+  // }
+
+  for(int i = 0; i < NUM_TRANSITIONERS; i++) {
+    pairIdxs[i] = i % NUM_PAIRS; // assign each transisitoner to a pair
+    trigCounts[i] = 0;
+    // get the starting color from the pair
+    int pairIndex = pairIdxs[i];
+    int colorIndex = pairs[pairIndex][0];
+
+    cts[i] = new ColorTransitioner(this, transitionTime, (int) colors[colorIndex], FRAME_RATE);
   }
 
   int size = 8;
@@ -85,14 +104,14 @@ void setup() {
 
   if (!foundIncoming) {
     println("Desired input device " + incomingDeviceName + " is not available");
-    noLoop();
-    while (true) {
-    }
+    // noLoop();
+    // while (true) {
+    // }
   }
 
   // Open connection to Midi hardware, using handler as the parent to recieve incoming messages
-  myBus = new MidiBus(handler, incomingDeviceName, -1);
-  println("opened NK2");
+  // myBus = new MidiBus(handler, incomingDeviceName, -1);
+  // println("opened NK2");
 
   // create artnet client without buffer (no receving needed)
   artnet = new ArtNetClient(null);
@@ -116,6 +135,7 @@ void draw() {
 
   for (int i = 0; i < NUM_LIGHTS; i++) {
     lights[i].setColor((int)cts[i].getColor());
+    lights[i].setBrightness(cts[i].getBrightness());
   }
 
   // fill dmx array
@@ -128,10 +148,10 @@ void draw() {
     dmxData[addr + 3] = (byte) blue(c);
   }
 
-  // for (int i = 0; i < 16; i++) {
-  //   print((dmxData[i]&0xFF)+" ");
-  // }
-  // println();
+  for (int i = 0; i < 16; i++) {
+    print((dmxData[i]&0xFF)+" ");
+  }
+  println();
 
   // send dmx to localhost
   // subnet 0, universe 0
@@ -193,8 +213,21 @@ void mousePressed() {
 }
 
 void triggerColorTransition(int ctIdx) {
-  colorIdxs[ctIdx] = (colorIdxs[ctIdx] + 1) % NUM_COLORS;
-  color targetColor = colors[colorIdxs[ctIdx]];
+  // colorIdxs[ctIdx] = (colorIdxs[ctIdx] + 1) % NUM_COLORS; // increment the color index with wraparound
+  // color targetColor = colors[colorIdxs[ctIdx]]; // get the color corresponding to the index
+  
+  // increment the trigger count
+  trigCounts[ctIdx]++;
+  if (trigCounts[ctIdx] >= trigPerPair) {
+    pairIdxs[ctIdx] = (pairIdxs[ctIdx] + 1) % NUM_PAIRS;
+    trigCounts[ctIdx] = 0;
+  }
+
+  // get the target color from the pair
+  int pairIndex = pairIdxs[ctIdx];
+  int pairPosition = trigCounts[ctIdx] % 2; // do we want the first or second color of the pair
+  int colorIndex = pairs[pairIndex][pairPosition];
+  color targetColor = colors[colorIndex];
   cts[ctIdx].triggerColorTransition((int)targetColor);
 }
 
